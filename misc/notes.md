@@ -206,3 +206,24 @@ collections:
 }
 ```
 
+## Steps for Netlify continuous deployment
+1. Create GitHub repo
+2. Add and push changes to repo
+3. Create new site on Netlify
+4. Choose GitHub
+5. Accept defaults and deploy site
+
+## Change our backend to point to GitHub and our repo
+* **IMPORTANT** If we don't do this any time we save or make any changes the files won't be saved if you restart the app!
+
+`static/admin/config.yml`
+
+```
+backend:
+  name: github
+  repo: kingluddite/gatsby-netlify-okta
+
+// MORE CODE
+```
+
+* Save, commit and push
