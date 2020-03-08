@@ -227,3 +227,47 @@ backend:
 ```
 
 * Save, commit and push
+
+`$ git commit -am 'Add GitHub backend`
+
+`$ git push`
+
+## We just created another build deployment
+* Now we'll be able to login with GitHub to modify the backend
+* Visit `https://netlify-gatsby-okta.netlify.com/admin/#/` and you will be prompted to sign in with Github
+
+## Houston we have a problem!
+* No Auth Provider Found
+
+![No Auth](https://i.imgur.com/e4iUoRX.png)
+
+### On Netlify
+* Go to Site `settings` and navigate to `Access control` > (scroll down) OAuth
+* Click `Install provider`
+* It will prompt you for a `client ID` and `secret`
+    - To get this, navigate to GitHub
+
+### On Github
+* `GitHub Developer settings` > `OAuth Apps` > `New OAuth App`
+
+### Register new app with these settings:
+* Application name: My Gatsby Blog
+* Homepage URL: `<copy URL from Netlify>` (example: https://netlify-gatsby-okta.netlify.com)
+* Application description: (optional)
+    - Gatsby + Netlify + Okta
+* Authorization callback URL: `https://api.netlify.com/auth/done`
+* When all filled in, click `Register application` and you'll get the `client ID` and `secret` you will copy and paste into Netlify (remember it was looking for this before)
+* Click `Install`
+
+## Makes Sense
+* This blog is stored in GitHub, so why not store our blogpost in GitHub
+
+## Log in and authenticate
+`https://netlify-gatsby-okta.netlify.com/admin`
+
+* Create a new blog and publish
+* Click back button and you will see blog post is still ther
+
+## Pull GitHub
+* Now if you pull down from GitHub you will see the markdown file was created on Github when you published the blog post and now you can pull it to your local repo
+
