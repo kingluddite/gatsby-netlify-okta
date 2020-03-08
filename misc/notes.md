@@ -206,6 +206,35 @@ collections:
 }
 ```
 
+## Dependencies
+`package.json`
+
+```
+// MORE CODE
+
+  "dependencies": {
+    "gatsby": "^2.19.7",
+    "gatsby-plugin-netlify-cms": "^4.1.40",
+    "gatsby-source-filesystem": "^2.1.50",
+    "gatsby-transformer-remark": "^2.6.55",
+    "netlify-cms-app": "^2.11.20",
+    "react": "^16.12.0",
+    "react-dom": "^16.12.0"
+  },
+  "devDependencies": {
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb": "^18.0.1",
+    "eslint-loader": "^3.0.3",
+    "eslint-plugin-import": "^2.20.1",
+    "eslint-plugin-jsx-a11y": "^6.2.3",
+    "eslint-plugin-react": "^7.19.0",
+    "gatsby-plugin-eslint": "^2.0.8",
+    "prettier": "^1.19.1"
+  },
+
+// MORE CODE
+```
+
 ## Steps for Netlify continuous deployment
 1. Create GitHub repo
 2. Add and push changes to repo
@@ -270,4 +299,276 @@ backend:
 
 ## Pull GitHub
 * Now if you pull down from GitHub you will see the markdown file was created on Github when you published the blog post and now you can pull it to your local repo
+* Open your `blog/hello-world.md` file and you'll see some preformatted code and your content
+    - This is the folder and file created dynamically on GitHub by netlify-cms
+
+`blog/hello-world.md`
+
+## Render those blog posts on the UI of the Gatsby app
+`src/components/BlogRoll.js`
+
+```
+import React, { Component } from 'react'
+import PropTypes from 'prop-types'
+import { Link, graphql, StaticQuery } from 'gatsby'
+
+class BlogRoll extends Component {
+  render() {
+    const { data } = this.props
+    const { edges: posts } = data.allMarkdownRemark
+
+    return (
+      <div className="columns is-multiline">
+        {posts &&
+          posts.map(({ node: post }) => (
+            <div className="is-parent column is-6" key={post.id}>
+              <article
+                className={`blog-list-item tile is-child box notification ${
+                  post.frontmatter.featuredpost ? 'is-featured' : ''
+                }`}
+              >
+                <header>
+                  <p className="post-meta">
+                    <Link
+                      className="title has-text-primary is-size-4"
+                      to={post.frontmatter.path}
+                    >
+                      {post.frontmatter.title}
+                      <span> &bull; </span>
+                      <span className="subtitle is-size-5 is-block">
+                        {post.frontmatter.date}
+                      </span>
+                    </Link>
+                  </p>
+                </header>
+                <p>
+                  {post.excerpt}
+                  <br />
+                  <br />
+                  <Link className="button" to={post.frontmatter.path}>
+                    {' '}
+                    Keep Reading →
+                  </Link>
+                </p>
+              </article>
+            </div>
+          ))}
+      </div>
+    )
+  }
+}
+
+BlogRoll.propTypes = {
+  data: PropTypes.shape({
+    allMarkdownRemark: PropTypes.shape({
+      edges: PropTypes.array,
+    }),
+  }),
+}
+
+export default () => (
+  <StaticQuery
+    query={graphql`
+      query BlogRollQuery {
+        allMarkdownRemark(sort: { order: DESC, fields: [frontmatter___date] }) {
+          edges {
+            node {
+              excerpt(pruneLength: 400)
+              id
+              frontmatter {
+                path
+                title
+                date(formatString: "MMMM, DD, YYYY")
+              }
+            }
+          }
+        }
+      }
+    `}
+    render={(data, count) => <BlogRoll data={data} count={count} />}
+  />
+)
+```
+
+## Pages
+* blog
+
+`pages/blog.js`
+
+```
+import React, { Component } from 'react'
+
+import BlogRoll from '../components/BlogRoll'
+
+export default class BlogIndexPage extends Component {
+  render() {
+    return (
+      <React.Fragment>
+        <h1>Latest Posts</h1>
+        <section>
+          <div className="content">
+            <BlogRoll />
+          </div>
+        </section>
+      </React.Fragment>
+    )
+  }
+}
+```
+
+`pages/index.js`
+
+```
+import React from 'react'
+import { Link } from 'gatsby'
+
+export default () => {
+  return (
+    <>
+      Hello world!
+      <p>
+        <Link to="/blog">View Blog</Link>
+      </p>
+    </>
+  )
+}
+```
+
+## Houston we have a problem
+`$ gatsby develop`
+
+* We get this GraphQL error
+
+```
+ERROR #85923  GRAPHQL
+
+There was an error in your GraphQL query:
+
+Cannot query field "allMarkdownRemark" on type "Query".
+```
+
+* Our gatsby project doesn't have Markdown support
+    - [Gatsby article on adding markdown pages](https://www.gatsbyjs.org/docs/adding-markdown-pages/)
+
+## Steps Gatsby does to work with Markdown to generate HTML
+1. Read files into Gatsby from the filesystem
+2. Transform Markdown to HTML and frontmatter to data
+3. Add a Markdown file
+4. Create a page component for the Markdown files
+5. Create static pages using Gatsby’s Node.js `createPage()` API
+
+### Install necessary modules to convert markdown to pages
+`$ npm i gatsby-source-filesystem gatsby-transformer-remark`
+
+`gatsby-config.js`
+
+```
+module.exports = {
+  /* Your site config here */
+  plugins: [
+    `gatsby-plugin-netlify-cms`,
+    {
+      resolve: `gatsby-source-filesystem`,
+      options: {
+        path: `${__dirname}/blog`,
+        name: `markdown-pages`,
+      },
+    },
+    `gatsby-transformer-remark`,
+    `gatsby-plugin-eslint`,
+  ],
+}
+```
+
+## Start up app
+`$ npm start`
+
+* You should see your blog posts at `/blog`
+
+## Houston we have a problem
+* Try to navigate into a blog... and it doesn't work!
+
+### You need to tell Gatsby to generate pages for each blog using some node magic
+* Create `/gatsby-node.js` in root of your app
+* Let's add code to create a static page for each blog
+
+`gatsby-node.js`
+
+```
+const path = require(`path`)
+
+exports.createPages = async ({ actions, graphql, reporter }) => {
+  const { createPage } = actions
+
+  const blogPostTemplate = path.resolve(`src/templates/blog.js`)
+
+  const result = await graphql(`
+    {
+      allMarkdownRemark(
+        sort: { order: DESC, fields: [frontmatter___date] }
+        limit: 1000
+      ) {
+        edges {
+          node {
+            frontmatter {
+              path
+            }
+          }
+        }
+      }
+    }
+  `)
+
+  // Handle errors
+  if (result.errors) {
+    reporter.panicOnBuild(`Error while running GraphQL query.`)
+    return
+  }
+
+  result.data.allMarkdownRemark.edges.forEach(({ node }) => {
+    createPage({
+      path: node.frontmatter.path,
+      component: blogPostTemplate,
+      context: {}, // additonal data can be passed via context
+    })
+  })
+}
+```
+
+`src/templates/blog.js`
+
+```
+import React from 'react'
+import { graphql } from 'gatsby'
+
+export default function Template({
+  data, // this prop will be injected by the GraphQL query below
+}) {
+  const { markdownRemark } = data // data.markdownRemark hold your post data
+  const { frontmatter, html } = markdownRemark
+  return (
+    <div className="blog-post-container">
+      <div className="blog-post">
+        <h1>{frontmatter.title}</h1>
+        <h2>{frontmatter.date}</h2>
+        <div className="blog-post-content" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    </div>
+  )
+}
+export const pageQuery = graphql`
+  query($path: String!) {
+    markdownRemark(frontmatter: { path: { eq: $path } }) {
+      html
+      frontmatter {
+        date(formatString: "MMMM DD, YYYY")
+        path
+        title
+      }
+    }
+  }
+`
+```
+
+
 
