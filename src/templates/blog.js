@@ -1,7 +1,10 @@
+/* eslint react/prop-types: 0 */ // --> OFF
+/* eslint react/no-danger: 0 */ // --> OFF
 import React from 'react'
 import { graphql } from 'gatsby'
+import PropTypes from 'prop-types'
 
-export default function Template({
+const BlogPost = function Template({
   data, // this prop will be injected by the GraphQL query below
 }) {
   const { markdownRemark } = data // data.markdownRemark hold your post data
@@ -16,6 +19,21 @@ export default function Template({
     </div>
   )
 }
+
+BlogPost.propTypes = {
+  data: PropTypes.shape({
+    markdownRemark: PropTypes.shape({
+      edges: PropTypes.array,
+    }),
+    // markdownRemark.frontmatter: PropType.string
+  }),
+}
+
+BlogPost.defaultProps = {
+  data: {},
+}
+
+export default BlogPost
 export const pageQuery = graphql`
   query($path: String!) {
     markdownRemark(frontmatter: { path: { eq: $path } }) {

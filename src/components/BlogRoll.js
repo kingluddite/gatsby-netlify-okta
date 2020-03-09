@@ -1,3 +1,4 @@
+/* eslint react/display-name: 0 */ // --> OFF
 import React, { Component } from 'react'
 import PropTypes from 'prop-types'
 import { Link, graphql, StaticQuery } from 'gatsby'
@@ -19,15 +20,10 @@ class BlogRoll extends Component {
               >
                 <header>
                   <p className="post-meta">
-                    <Link
-                      className="title has-text-primary is-size-4"
-                      to={post.frontmatter.path}
-                    >
+                    <Link className="title has-text-primary is-size-4" to={post.frontmatter.path}>
                       {post.frontmatter.title}
                       <span> &bull; </span>
-                      <span className="subtitle is-size-5 is-block">
-                        {post.frontmatter.date}
-                      </span>
+                      <span className="subtitle is-size-5 is-block">{post.frontmatter.date}</span>
                     </Link>
                   </p>
                 </header>
@@ -54,6 +50,10 @@ BlogRoll.propTypes = {
       edges: PropTypes.array,
     }),
   }),
+}
+
+BlogRoll.defaultProps = {
+  data: {},
 }
 
 export default () => (

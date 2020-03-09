@@ -570,5 +570,448 @@ export const pageQuery = graphql`
 `
 ```
 
+## View page in browser
+* You can now see individual blogs
 
+## Build an Account page
+* We'll first add the link to our home page
 
+`pages/index.js`
+
+```
+import React from 'react'
+import { Link } from 'gatsby'
+
+export default () => {
+  return (
+    <>
+      Hello world!
+      <p>
+        <Link to="/blog">View Blog</Link>
+      </p>
+      <p>
+        <Link to="/account">My Account</Link>
+      </p>
+    </>
+  )
+}
+```
+
+## and now the account page
+* Since this section will have dynamic content that shouldn’t be rendered statically, you need to exclude it from the build
+
+`src/pages/account.js`
+
+```
+import React from 'react'
+import { Router } from '@reach/router'
+import { Link } from 'gatsby'
+
+const Home = () => <p>Home</p>
+const Settings = () => <p>Settings</p>
+const Account = () => {
+  return (
+    <>
+      <nav>
+        <p>
+          <Link to="/">Home</Link>
+        </p>
+        <p>
+          <Link to="/account">My Account</Link>
+        </p>
+        <p>
+          <Link to="/account/settings">Settings</Link>
+        </p>
+      </nav>
+      <h1>My Account</h1>
+      <Router>
+        <Home path="/account" />
+        <Settings path="/account/settings" />
+      </Router>
+    </>
+  )
+}
+
+export default Account
+```
+
+### We will indicate that /account is a client-only route
+* We'll put this code fragment at the bottom of `gatsby-node.js`
+
+`gatsby-node.js`
+
+```
+// MORE CODE
+exports.onCreatePage = async ({ page, actions }) => {
+  const { createPage } = actions
+
+  if (page.path.match(/^\/account/)) {
+    page.matchPath = '/account/*'
+    createPage(page)
+  }
+}
+```
+
+* Now you can navigate to this new section
+
+## Register Your App with Okta
+* To begin with Okta, you’ll need to `register` your app, just like you did with GitHub
+* Log in to your Okta developer account and navigate to:
+
+`Applications` > `Add Application`
+
+1. Choose `Single-Page App` and `Next`
+2. Enter a name like `Gatsby Account`
+3. Specify the following Login redirect URIs:
+
+* http://localhost:8000/account
+* http://localhost:9000/account
+* https://<your-site>.netlify.com/account
+
+4. Specify the following Logout redirect URIs:
+
+* http://localhost:8000
+* http://localhost:9000
+* https://<your-site>.netlify.com
+
+5. Click `Done`
+
+![okta general settings for your custom SPA](https://i.imgur.com/x2qQBHM.png)
+
+## Add Trusted Origins for your Gatsby Sites
+* Gatsby can run on two different ports (8000 and 9000) locally
+* Port 8000 is for development (`$ gatsby build`)
+* Port 9000 is for production (`$ gatsby build` and `$ gatsby serve`)
+
+### Add them to:
+Add all of these as Trusted Origins in `API` > `Trusted Origins` of your Okta tenant
+
+![Add trusted origins](https://i.imgur.com/acNlBBo.png)
+
+## Time to protect Gatsby Account Section using Okta
+* Install Okta's Sign-in Widget
+
+`$ npm i @okta/okta-signin-widget`
+
+* Make sure to plugin in Your Okta `tenant URL` and app `Client ID` (given in last step when you configured your SPA)
+
+`Login.js`
+
+```
+/* eslint react/no-unused-state: 0 */ // --> OFF
+import OktaSignIn from '@okta/okta-signin-widget'
+import '@okta/okta-signin-widget/dist/css/okta-sign-in.min.css'
+import React, { Component } from 'react'
+
+const config = {
+  baseUrl: 'https://dev-414986.oktapreview.com',
+  clientId: '0oaq60o5k5hgjGrkB0h7',
+  logo: '//logo.clearbit.com/gatsbyjs.org',
+  redirectUri: typeof window !== 'undefined' && `${window.location.origin}/account`,
+  el: '#signIn',
+  authParams: {
+    pkce: true,
+    responseType: ['token', 'id_token'],
+  },
+}
+
+export const signIn = typeof window !== 'undefined' && new OktaSignIn(config)
+
+export default class Login extends Component {
+  constructor(props) {
+    super(props)
+
+    this.state = {
+      user: false,
+    }
+
+    this.signIn = signIn
+  }
+
+  async componentDidMount() {
+    const { authClient } = this.signIn
+    const session = await authClient.session.get()
+    console.log('session.status', session.status)
+    // Session exists, show logged in state
+    if (session.status === 'ACTIVE') {
+      // clear parameters from browser window
+      window.location.hash = ''
+      // set username in state
+      this.setState({ user: session.login })
+      localStorage.setItem('isAuthenticated', 'true')
+      // get access and ID tokens
+      authClient.token
+        .getWithoutPrompt({
+          scopes: ['openid', 'email', 'profile'],
+        })
+        .then(tokens => {
+          tokens.forEach(token => {
+            if (token.idToken) {
+              authClient.tokenManager.add('idToken', token)
+            }
+            if (token.accessToken) {
+              authClient.tokenManager.add('accessToken', token)
+            }
+          })
+
+          // Say hello to the person who just signed in
+          authClient.tokenManager.get('idToken').then(idToken => {
+            console.log(`Hello, ${idToken.claims.name} (${idToken.claims.email})`)
+            window.location.reload()
+          })
+        })
+        .catch(error => console.error(error))
+      return
+    }
+    this.signIn.remove()
+
+    this.signIn.renderEl({ el: '#signIn' })
+  }
+
+  render() {
+    return <div id="signIn" />
+  }
+}
+```
+
+## Modify account page
+* To include an Account component that uses `Login` to get ID tokens and logout
+
+`account.js`
+
+```
+import React, { Component } from 'react'
+import { navigate, Router } from '@reach/router'
+import { Link } from 'gatsby'
+import Login, { signIn } from '../components/Login'
+
+const Home = () => <p>Home</p>
+const Settings = () => <p>Settings</p>
+
+const isAuthenticated = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('isAuthenticated') === 'true'
+  }
+  return false
+}
+
+class Account extends Component {
+  constructor(props) {
+    super(props)
+
+    this.state = { user: false }
+    this.logout = this.logout.bind(this)
+  }
+
+  async componentDidMount() {
+    const token = await signIn.authClient.tokenManager.get('idToken')
+    if (token) {
+      this.setState({ user: token.claims.name })
+    } else {
+      // Token has expired
+      this.setState({ user: false })
+      localStorage.setItem('isAuthenticated', 'false')
+    }
+  }
+
+  logout() {
+    signIn.authClient
+      .signOut()
+      .catch(error => {
+        console.error(`Sign out error: ${error}`)
+      })
+      .then(() => {
+        localStorage.setItem('isAuthenticated', 'false')
+        this.setState({ user: false })
+        navigate('/')
+      })
+  }
+
+  render() {
+    const { user } = this.state
+    if (!isAuthenticated()) {
+      return <Login />
+    }
+
+    return (
+      <>
+        <nav>
+          <p>
+            <Link to="/">Home</Link>
+          </p>
+          <p>
+            <Link to="/account">My Account</Link>
+          </p>
+          <p>
+            <Link to="/account/settings">Settings</Link>
+          </p>
+        </nav>
+        <h1>My Account</h1>
+        <>
+          <p>
+            Welcome, {user}.
+            <button type="button" onClick={this.logout}>
+              Logout
+            </button>
+          </p>
+        </>
+        <Router>
+          <Home path="/account" />
+          <Settings path="/account/settings" />
+        </Router>
+      </>
+    )
+  }
+}
+
+export default Account
+```
+
+### Need state so convert to class based component
+Need to convert it from a stateless functional component to a class based component
+
+* **note** If you are using a custom domain inside okta (example: sso.soccermatters.com) you need to use that domain and not your okta preview domain or production domain
+
+## Eslint (turn errors off)
+`BlogRoll.js`
+
+```
+// MORE CODE
+
+/* eslint react/display-name: 0 */ // --> OFF
+import React, { Component } from 'react'
+import PropTypes from 'prop-types'
+import { Link, graphql, StaticQuery } from 'gatsby'
+
+// MORE CODE
+```
+
+`Login.js`
+
+```
+// MORE CODE
+
+/* eslint react/no-unused-state: 0 */ // --> OFF
+import OktaSignIn from '@okta/okta-signin-widget'
+import '@okta/okta-signin-widget/dist/css/okta-sign-in.min.css'
+import React, { Component } from 'react'
+
+// MORE CODE
+```
+
+`index.js`
+
+* Fix display name eslint error
+
+```
+// MORE CODE
+
+import React from 'react'
+import { Link } from 'gatsby'
+
+const HomePage = () => (
+  <>
+    Hello world!
+    <p>
+      <Link to="/blog">View Blog</Link>
+    </p>
+    <p>
+      <Link to="/account">My Account</Link>
+    </p>
+  </>
+)
+
+export default HomePage
+
+// MORE CODE
+```
+
+`templates/blog.js`
+
+```
+/* eslint react/prop-types: 0 */ // --> OFF
+/* eslint react/no-danger: 0 */ // --> OFF
+import React from 'react'
+import { graphql } from 'gatsby'
+import PropTypes from 'prop-types'
+
+// MORE CODE
+```
+
+## Try it out
+* Enter your credentials and click Sign In to browse the account section
+* You should also see your name
+* You should also be able to logout
+
+## Fix Gatsby Production Build
+### Test building your app for production
+`$ run gatsby build`
+
+### Houston we have a problem!
+* You’ll get an error because Okta’s Sign-In Widget doesn’t expect to be compiled for server-side rendering
+
+![error on build](https://i.imgur.com/zF0YodE.png)
+
+#### Solution to error
+* To fix this, you can exclude it from the compilation process
+* Modify the webpack build to exclude it from compilation by configuring webpack
+* Add the JavaScript below to the bottom of `gatsby-node.js`
+
+`gatsby-node.js`
+
+```
+// MORE CODE
+exports.onCreateWebpackConfig = ({ stage, loaders, actions }) => {
+  if (stage === 'build-html') {
+    // Exclude Sign-In Widget from compilation path
+    actions.setWebpackConfig({
+      module: {
+        rules: [
+          {
+            test: /okta-sign-in/,
+            use: loaders.null(),
+          },
+        ],
+      },
+    })
+  }
+}
+```
+
+* Try `$ gatsby build` again
+* Now it should work this time
+* Run `$ gatsby serve` to see if the production build works on 
+
+`http://localhost:9000`
+
+* If it does, Congrats!
+
+## Add User Registration
+* To give people the ability to sign-up for accounts, go to your 
+
+`Okta dashboard` > `Users` > `Registration`, and enable it
+
+## Modify src/components/Login.js
+* This will add Okta’s user registration feature
+
+```
+const config = {
+  ...
+  authParams: {
+    pkce: true,
+    responseType: ['token', 'id_token']
+  },
+  features: {
+    registration: true
+  }
+};
+```
+
+* Then build for production and serve it up again
+
+```
+$ gatsby build
+$ gatsby serve
+```
+
+* You will now see a `Sign Up` link at the bottom of the login form
